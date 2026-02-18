@@ -32,23 +32,22 @@ export default function SpecialistProfilePage() {
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const res = await fetch("/api/users?role=specialist&limit=1", { cache: "no-store" })
+        const res = await fetch("/api/me", { cache: "no-store" })
         const data = await res.json()
-        const user = data.users?.[0] || null
-
-        if (user?.id) {
-          const detailRes = await fetch(`/api/users/${user.id}`, { cache: "no-store" })
-          const detailData = await detailRes.json()
-          const detailUser = detailData.user || user
-          setCurrentUser({
-            ...detailUser,
-            profilePendingVerification: detailUser.profile_pending_verification ?? detailUser.profilePendingVerification,
+        
+        if (!res.ok || !data.user) {
+          console.error("Failed to load user:", data.error)
+          setIsLoadingUser(false)
+          return
+        }
+        
+        const detailUser = data.user
+        setCurrentUser({
+          ...detailUser,
+          profilePendingVerification: detailUser.profile_pending_verification ?? detailUser.profilePendingVerification,
             profileVerified: detailUser.profile_verified ?? detailUser.profileVerified,
             documents: detailUser.documents ?? [],
           })
-        } else {
-          setCurrentUser(user)
-        }
       } catch (error) {
         console.error("Failed to load specialist user", error)
       } finally {

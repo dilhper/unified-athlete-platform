@@ -50,11 +50,15 @@ export async function requirePermission(permission: Permission) {
   }
 
   const allowedRoles = Permissions[permission];
-  const userRole = user.role as Role;
+  const userRole = user.role;
 
-  if (!allowedRoles.includes(userRole)) {
+  // Convert to array and check if user's role is allowed
+  const rolesArray = Array.from(allowedRoles);
+  const isAllowed = rolesArray.some(role => role === userRole);
+
+  if (!isAllowed) {
     throw new AuthorizationError(
-      `Permission '${permission}' requires one of: ${allowedRoles.join(", ")}`
+      `Permission '${permission}' requires one of: ${allowedRoles.join(", ")}. User has role: ${userRole}`
     );
   }
 

@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   CheckCircle,
   Clock,
@@ -34,6 +36,8 @@ export default function OfficialDashboard() {
   const [pendingSpecialists, setPendingSpecialists] = useState<any[]>([])
   const [userCache, setUserCache] = useState<Record<string, any>>({})
   const [isLoadingRegistrations, setIsLoadingRegistrations] = useState(false)
+  const [profileChangeRequests, setProfileChangeRequests] = useState<any[]>([])
+  const [isLoadingProfileChanges, setIsLoadingProfileChanges] = useState(false)
 
   const normalizeRegistration = (user: any) => ({
     id: user.id,
@@ -57,9 +61,14 @@ export default function OfficialDashboard() {
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const res = await fetch("/api/users?role=official&limit=1", { cache: "no-store" })
+        const res = await fetch("/api/me", { cache: "no-store" })
         const data = await res.json()
-        setCurrentUser(data.users?.[0] || null)
+        
+        if (res.ok && data.user) {
+          setCurrentUser(data.user)
+        } else {
+          console.error("Failed to load user:", data.error)
+        }
       } catch (error) {
         console.error("Failed to load official user", error)
       } finally {
@@ -73,7 +82,7 @@ export default function OfficialDashboard() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [registrationsRes, pendingAchRes, verifiedAchRes, rejectedAchRes, pendingCertRes, verifiedCertRes, rejectedCertRes, pendingSpecialistsRes] = await Promise.all([
+        const [registrationsRes, pendingAchRes, verifiedAchRes, rejectedAchRes, pendingCertRes, verifiedCertRes, rejectedCertRes, pendingSpecialistsRes, profileChangesRes] = await Promise.all([
           fetch("/api/official/registrations", { cache: "no-store" }),
           fetch("/api/verifications?type=achievement&status=pending", { cache: "no-store" }),
           fetch("/api/verifications?type=achievement&status=verified", { cache: "no-store" }),
@@ -82,6 +91,7 @@ export default function OfficialDashboard() {
           fetch("/api/verifications?type=certification&status=verified", { cache: "no-store" }),
           fetch("/api/verifications?type=certification&status=rejected", { cache: "no-store" }),
           fetch("/api/official/pending-specialists", { cache: "no-store" }),
+          fetch("/api/profile-change-requests", { cache: "no-store" }),
         ])
 
         const registrationsData = await registrationsRes.json()
@@ -92,6 +102,7 @@ export default function OfficialDashboard() {
         const verifiedCertData = await verifiedCertRes.json()
         const rejectedCertData = await rejectedCertRes.json()
         const pendingSpecialistsData = await pendingSpecialistsRes.json()
+        const profileChangesData = await profileChangesRes.json()
 
         setPendingRegistrations((registrationsData.registrations || []).map(normalizeRegistration))
         setPendingAchievements(pendingAchData.verifications || [])
@@ -106,6 +117,7 @@ export default function OfficialDashboard() {
             createdAt: specialist.created_at ?? specialist.createdAt,
           }))
         )
+        setProfileChangeRequests(profileChangesData.requests || [])
       } catch (error) {
         console.error("Failed to load official dashboard data", error)
       }
@@ -126,8 +138,9 @@ export default function OfficialDashboard() {
     rejectedCertifications.forEach((c: any) => c.coach_id && ids.add(c.coach_id))
     pendingRegistrations.forEach((u: any) => u.id && ids.add(u.id))
     pendingSpecialists.forEach((u: any) => u.id && ids.add(u.id))
+    profileChangeRequests.forEach((r: any) => r.user_id && ids.add(r.user_id))
     return Array.from(ids)
-  }, [pendingAchievements, verifiedAchievements, rejectedAchievements, pendingCertifications, verifiedCertifications, rejectedCertifications, pendingRegistrations, pendingSpecialists])
+  }, [pendingAchievements, verifiedAchievements, rejectedAchievements, pendingCertifications, verifiedCertifications, rejectedCertifications, pendingRegistrations, pendingSpecialists, profileChangeRequests])
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -349,7 +362,7 @@ export default function OfficialDashboard() {
         
         {/* Main Content with Tabs */}
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 bg-muted">
+          <TabsList className="grid w-full grid-cols-4 bg-muted">
             <TabsTrigger value="overview" className="text-foreground">Overview</TabsTrigger>
             <TabsTrigger value="registrations" className="text-foreground">
               Registrations
@@ -364,6 +377,14 @@ export default function OfficialDashboard() {
               {(pendingVerifications.length + pendingCertifications.length) > 0 && (
                 <Badge variant="secondary" className="ml-2 bg-amber-500/20 text-amber-700">
                   {pendingVerifications.length + pendingCertifications.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="profile-changes" className="text-foreground">
+              Profile Changes
+              {profileChangeRequests.filter((r: any) => r.status === 'pending').length > 0 && (
+                <Badge variant="secondary" className="ml-2 bg-purple-500/20 text-purple-700">
+                  {profileChangeRequests.filter((r: any) => r.status === 'pending').length}
                 </Badge>
               )}
             </TabsTrigger>
@@ -750,6 +771,217 @@ export default function OfficialDashboard() {
                 )}
               </TabsContent>
             </Tabs>
+          </TabsContent>
+          
+          {/* Profile Changes Tab */}
+          <TabsContent value="profile-changes" className="space-y-6 pt-6">
+            {profileChangeRequests.filter((r: any) => r.status === 'pending').length === 0 ? (
+              <Card className="bg-card border-border">
+                <CardContent className="py-16 text-center">
+                  <CheckCircle className="h-16 w-16 mx-auto mb-4 text-primary opacity-50" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">No Pending Profile Changes</h3>
+                  <p className="text-muted-foreground">All profile change requests have been reviewed</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {profileChangeRequests
+                  .filter((r: any) => r.status === 'pending')
+                  .map((request) => {
+                    const athlete = getUserById(request.user_id);
+                    const changes = JSON.parse(request.requested_changes || '{}');
+                    
+                    return (
+                      <Card key={request.id} className="bg-card border-border">
+                        <CardHeader>
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <CardTitle className="text-foreground flex items-center gap-2">
+                                {athlete?.name || 'Loading...'}
+                                <Badge className="bg-purple-500/20 text-purple-700 border-0">
+                                  Pending Review
+                                </Badge>
+                              </CardTitle>
+                              <CardDescription>
+                                Submitted {new Date(request.created_at).toLocaleDateString()} • {athlete?.email}
+                              </CardDescription>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                          {/* Reason */}
+                          <div>
+                            <Label className="text-foreground font-medium">Reason for Changes</Label>
+                            <p className="text-sm text-muted-foreground mt-1 p-3 bg-muted rounded-md">
+                              {request.reason}
+                            </p>
+                          </div>
+                          
+                          {/* Supporting Document */}
+                          {request.document_url && (
+                            <div>
+                              <Label className="text-foreground font-medium">Supporting Document</Label>
+                              <div className="mt-2">
+                                <a 
+                                  href={request.document_url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+                                >
+                                  <FileCheck className="h-4 w-4" />
+                                  {request.document_name || 'View Document'}
+                                </a>
+                                {request.document_size && (
+                                  <span className="text-xs text-muted-foreground ml-2">
+                                    ({(parseInt(request.document_size) / 1024 / 1024).toFixed(2)} MB)
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Requested Changes */}
+                          <div>
+                            <Label className="text-foreground font-medium">Requested Changes</Label>
+                            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                              {Object.entries(changes).map(([field, value]) => {
+                                const fieldLabels: Record<string, string> = {
+                                  athleteType: 'Athlete Type',
+                                  schoolClub: 'School/Club',
+                                  dateOfBirth: 'Date of Birth',
+                                  nationalRanking: 'National Ranking',
+                                  district: 'District',
+                                  trainingPlace: 'Training Place',
+                                };
+                                
+                                const currentFieldName = field.replace(/([A-Z])/g, '_$1').toLowerCase();
+                                const currentValue = athlete ? athlete[currentFieldName] : 'N/A';
+                                
+                                return (
+                                  <div key={field} className="p-3 bg-muted rounded-md">
+                                    <p className="text-xs font-medium text-muted-foreground mb-1">
+                                      {fieldLabels[field] || field}
+                                    </p>
+                                    <div className="space-y-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs text-muted-foreground">Current:</span>
+                                        <span className="text-sm text-foreground line-through opacity-60">
+                                          {currentValue || 'Not set'}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs text-muted-foreground">New:</span>
+                                        <span className="text-sm font-medium text-primary">
+                                          {String(value) || 'Not set'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          
+                          {/* Review Notes */}
+                          <div>
+                            <Label htmlFor={`notes-${request.id}`} className="text-foreground font-medium">
+                              Review Notes (Optional)
+                            </Label>
+                            <Textarea
+                              id={`notes-${request.id}`}
+                              placeholder="Add any comments or notes about your decision..."
+                              className="mt-2 bg-input border-border"
+                            />
+                          </div>
+                          
+                          {/* Action Buttons */}
+                          <div className="flex gap-3 pt-4 border-t border-border">
+                            <Button
+                              variant="destructive"
+                              onClick={async () => {
+                                const notesTextarea = document.getElementById(`notes-${request.id}`) as HTMLTextAreaElement;
+                                const notes = notesTextarea?.value || '';
+                                
+                                if (!confirm('Are you sure you want to reject this profile change request?')) return;
+                                
+                                setIsLoadingProfileChanges(true);
+                                try {
+                                  const res = await fetch(`/api/profile-change-requests/${request.id}`, {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ 
+                                      action: 'reject',
+                                      reviewNotes: notes 
+                                    }),
+                                  });
+                                  
+                                  if (!res.ok) {
+                                    const error = await res.json();
+                                    throw new Error(error.error || 'Failed to reject request');
+                                  }
+                                  
+                                  // Refresh the list
+                                  const refreshRes = await fetch('/api/profile-change-requests', { cache: 'no-store' });
+                                  const refreshData = await refreshRes.json();
+                                  setProfileChangeRequests(refreshData.requests || []);
+                                } catch (error: any) {
+                                  console.error('Failed to reject profile change request:', error);
+                                  alert('Error: ' + error.message);
+                                } finally {
+                                  setIsLoadingProfileChanges(false);
+                                }
+                              }}
+                              disabled={isLoadingProfileChanges}
+                            >
+                              <XCircle className="h-4 w-4 mr-2" />
+                              Reject
+                            </Button>
+                            <Button
+                              onClick={async () => {
+                                const notesTextarea = document.getElementById(`notes-${request.id}`) as HTMLTextAreaElement;
+                                const notes = notesTextarea?.value || '';
+                                
+                                if (!confirm('Approve this profile change request? The athlete\'s profile will be updated immediately.')) return;
+                                
+                                setIsLoadingProfileChanges(true);
+                                try {
+                                  const res = await fetch(`/api/profile-change-requests/${request.id}`, {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ 
+                                      action: 'approve',
+                                      reviewNotes: notes 
+                                    }),
+                                  });
+                                  
+                                  if (!res.ok) {
+                                    const error = await res.json();
+                                    throw new Error(error.error || 'Failed to approve request');
+                                  }
+                                  
+                                  // Refresh the list
+                                  const refreshRes = await fetch('/api/profile-change-requests', { cache: 'no-store' });
+                                  const refreshData = await refreshRes.json();
+                                  setProfileChangeRequests(refreshData.requests || []);
+                                } catch (error: any) {
+                                  console.error('Failed to approve profile change request:', error);
+                                  alert('Error: ' + error.message);
+                                } finally {
+                                  setIsLoadingProfileChanges(false);
+                                }
+                              }}
+                              disabled={isLoadingProfileChanges}
+                            >
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                              Approve Changes
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>

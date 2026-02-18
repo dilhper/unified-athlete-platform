@@ -30,7 +30,8 @@ import {
   AlertTriangle,
   Star,
   Upload,
-  Radio
+  Radio,
+  X
 } from "lucide-react"
 
 export default function AthleteTrainingPage() {
@@ -79,9 +80,14 @@ export default function AthleteTrainingPage() {
     
     const loadUser = async () => {
       try {
-        const res = await fetch("/api/users?role=athlete&limit=1", { cache: "no-store" })
+        const res = await fetch("/api/me", { cache: "no-store" })
         const data = await res.json()
-        setCurrentUser(data.users?.[0] || null)
+        
+        if (res.ok && data.user) {
+          setCurrentUser(data.user)
+        } else {
+          console.error("Failed to load user:", data.error)
+        }
       } catch (error) {
         console.error("Failed to load athlete user", error)
       } finally {
@@ -219,27 +225,74 @@ export default function AthleteTrainingPage() {
   
   // New handler functions
   const handleSportRegistration = async () => {
-    if (!selectedSport || !selectedCoach) return
+    if (!selectedSport || !selectedCoach) {
+      alert("Please select both a sport and a coach")
+      return
+    }
     
-    await fetch("/api/sport-registrations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        athleteId: currentUser.id,
-        sport: selectedSport,
-        coachId: selectedCoach,
-        priority: sportPriority,
-      }),
-    })
+    try {
+      const response = await fetch("/api/sport-registrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          athleteId: currentUser.id,
+          sport: selectedSport,
+          coachId: selectedCoach,
+          priority: sportPriority,
+        }),
+      })
 
-    const refreshed = await fetch(`/api/sport-registrations?athleteId=${currentUser.id}`, { cache: "no-store" })
-    const refreshedData = await refreshed.json()
-    setSportRegistrations(refreshedData.registrations || [])
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to submit sport registration")
+      }
+
+      const refreshed = await fetch(`/api/sport-registrations?athleteId=${currentUser.id}`, { cache: "no-store" })
+      const refreshedData = await refreshed.json()
+      setSportRegistrations(refreshedData.registrations || [])
+      
+      // Show success message
+      alert(`Sport registration submitted successfully! Your request to join ${selectedSport} is pending coach approval.`)
+      
+      // Close both dialogs (there are two sport registration dialogs in this component)
+      setShowSportRegistration(false)
+      setIsSportDialogOpen(false)
+      
+      // Reset form
+      setSelectedSport("")
+      setSelectedCoach("")
+      setSportPriority(1)
+    } catch (error: any) {
+      console.error("Error submitting sport registration:", error)
+      alert("Error: " + (error.message || "Failed to submit sport registration. Please try again."))
+    }
+  }
+  
+  const handleCancelRegistration = async (registrationId: string, sport: string) => {
+    if (!confirm(`Are you sure you want to cancel your pending registration for ${sport}?`)) {
+      return
+    }
     
-    setShowSportRegistration(false)
-    setSelectedSport("")
-    setSelectedCoach("")
-    setSportPriority(1)
+    try {
+      const response = await fetch(`/api/sport-registrations/${registrationId}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to cancel registration")
+      }
+
+      // Refresh the sport registrations list
+      const refreshed = await fetch(`/api/sport-registrations?athleteId=${currentUser.id}`, { cache: "no-store" })
+      const refreshedData = await refreshed.json()
+      setSportRegistrations(refreshedData.registrations || [])
+      
+      alert(`Your registration for ${sport} has been cancelled successfully.`)
+    } catch (error: any) {
+      console.error("Error cancelling sport registration:", error)
+      alert("Error: " + (error.message || "Failed to cancel registration. Please try again."))
+    }
   }
   
   const handlePhysioBooking = async () => {
@@ -1146,6 +1199,7 @@ export default function AthleteTrainingPage() {
               <div className="space-y-3">
                 {sportRegistrations.map((reg) => {
                   const coach = coachMap[reg.coachId]
+                  const coachName = coach?.name || 'Loading...'
                   return (
                     <div key={reg.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
                       <div className="flex items-center gap-3">
@@ -1163,17 +1217,32 @@ export default function AthleteTrainingPage() {
                         </div>
                         <div>
                           <p className="font-medium text-foreground">{reg.sport}</p>
-                          <p className="text-sm text-muted-foreground">
-                            Coach: {coach?.name} • Priority: {reg.priority}
-                          </p>
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <span>Coach: {coachName}</span>
+                            <span>•</span>
+                            <span>Priority: {reg.priority}</span>
+                          </div>
                         </div>
                       </div>
-                      <Badge className={
-                        reg.status === 'approved' ? 'bg-primary/20 text-primary' :
-                        reg.status === 'pending' ? 'bg-accent/20 text-accent' : 'bg-destructive/20 text-destructive'
-                      }>
-                        {reg.status}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge className={
+                          reg.status === 'approved' ? 'bg-primary/20 text-primary' :
+                          reg.status === 'pending' ? 'bg-accent/20 text-accent' : 'bg-destructive/20 text-destructive'
+                        }>
+                          {reg.status}
+                        </Badge>
+                        {reg.status === 'pending' && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                            onClick={() => handleCancelRegistration(reg.id, reg.sport)}
+                            title="Cancel registration"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   )
                 })}

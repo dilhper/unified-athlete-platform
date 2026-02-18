@@ -29,6 +29,11 @@ export async function POST(req: Request) {
           document: document,
           documentType: formData.get('documentType') as string || undefined,
           sports: formData.get('sports') as string || undefined,
+          schoolClub: formData.get('schoolClub') as string || undefined,
+          dateOfBirth: formData.get('dateOfBirth') as string || undefined,
+          nationalRanking: formData.get('nationalRanking') as string || undefined,
+          district: formData.get('district') as string || undefined,
+          trainingPlace: formData.get('trainingPlace') as string || undefined,
         }
       } catch (err) {
         console.error('FormData parsing error:', err)
@@ -51,6 +56,11 @@ export async function POST(req: Request) {
       document,
       documentType,
       sports: sportsString,
+      schoolClub,
+      dateOfBirth,
+      nationalRanking,
+      district,
+      trainingPlace,
     } = body || {}
 
     // Parse sports if provided
@@ -101,9 +111,14 @@ export async function POST(req: Request) {
         location,
         years_of_experience,
         sport,
+        school_club,
+        date_of_birth,
+        national_ranking,
+        district,
+        training_place,
         profile_pending_verification,
         email_verified
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true,false)
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,true,false)
       RETURNING *`,
       [
         userId,
@@ -116,6 +131,11 @@ export async function POST(req: Request) {
         location || null,
         yearsOfExperience || null,
         sports.length > 0 ? sports.join(',') : null,
+        schoolClub || null,
+        dateOfBirth || null,
+        nationalRanking ? parseInt(nationalRanking) : null,
+        district || null,
+        trainingPlace || null,
       ]
     )
 

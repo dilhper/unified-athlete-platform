@@ -29,9 +29,14 @@ export default function CoachDashboard() {
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const res = await fetch("/api/users?role=coach&limit=1", { cache: "no-store" })
+        const res = await fetch("/api/me", { cache: "no-store" })
         const data = await res.json()
-        setCurrentUser(data.users?.[0] || null)
+        
+        if (res.ok && data.user) {
+          setCurrentUser(data.user)
+        } else {
+          console.error("Failed to load user:", data.error)
+        }
       } catch (error) {
         console.error("Failed to load coach user", error)
       } finally {
@@ -213,7 +218,7 @@ export default function CoachDashboard() {
                 </div>
               ) : (
                 activePlans.slice(0, 4).map((plan) => {
-                  const athletes = (plan.athleteIds || []).map((id: string) => athletes.find(u => u.id === id)).filter(Boolean)
+                  const planAthletes = (plan.athleteIds || []).map((id: string) => athletes.find(u => u.id === id)).filter(Boolean)
                   
                   return (
                     <Link key={plan.id} href={`/coach/training-plans/${plan.id}`}>
@@ -222,15 +227,15 @@ export default function CoachDashboard() {
                           <div className="flex items-center gap-3">
                             <Avatar className="h-10 w-10">
                               <AvatarFallback className="bg-primary/10 text-primary text-sm">
-                                {athletes.length > 0 ? athletes[0]?.name.split(" ").map(n => n[0]).join("") : "T"}
+                                {planAthletes.length > 0 ? planAthletes[0]?.name.split(" ").map(n => n[0]).join("") : "T"}
                               </AvatarFallback>
                             </Avatar>
                             <div>
                               <h3 className="font-medium text-foreground">{plan.name}</h3>
                               <p className="text-sm text-muted-foreground">
-                                {athletes.length === 1 
-                                  ? athletes[0]?.name 
-                                  : `${athletes.length} athletes`
+                                {planAthletes.length === 1 
+                                  ? planAthletes[0]?.name 
+                                  : `${planAthletes.length} athletes`
                                 }
                               </p>
                             </div>

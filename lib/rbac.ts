@@ -59,6 +59,7 @@ export const Permissions = {
   VIEW_ASSIGNED_ATHLETES: [Roles.COACH],
   APPROVE_TRAINING_PAUSE: [Roles.COACH],
   SUBMIT_CERTIFICATION: [Roles.COACH],
+  APPROVE_SPORT_REGISTRATION: [Roles.COACH],
   
   // ===== SPECIALIST ACTIONS =====
   CREATE_CONSULTATION: [Roles.SPECIALIST],
@@ -89,7 +90,7 @@ export type Permission = keyof typeof Permissions;
  * Helper: Check if a role has a specific permission
  */
 export function hasPermission(userRole: Role, permission: Permission): boolean {
-  const allowedRoles = Permissions[permission];
+  const allowedRoles = Permissions[permission] as readonly Role[];
   return allowedRoles.includes(userRole);
 }
 

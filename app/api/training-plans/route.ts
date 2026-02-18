@@ -62,6 +62,7 @@ export async function POST(req: Request) {
       endDate,
       status = 'active',
       mode = 'both',
+      tasks = [],
     } = body || {}
 
     // Verify coach is creating plan for themselves
@@ -113,6 +114,27 @@ export async function POST(req: Request) {
           `INSERT INTO training_plan_athletes (plan_id, athlete_id)
            VALUES ($1,$2)`,
           [planId, athleteId]
+        )
+      }
+    }
+
+    // Insert tasks if provided
+    if (Array.isArray(tasks) && tasks.length > 0) {
+      for (const task of tasks) {
+        const taskId = randomUUID()
+        await client.query(
+          `INSERT INTO training_plan_tasks (
+            id, plan_id, name, description, start_date, end_date, order_index, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+          [
+            taskId,
+            planId,
+            task.name,
+            task.description || null,
+            task.startDate,
+            task.endDate,
+            task.orderIndex || 0,
+          ]
         )
       }
     }

@@ -69,6 +69,14 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState('')
   const [verificationToken, setVerificationToken] = useState('')
+  
+  // Athlete-specific fields
+  const [schoolClub, setSchoolClub] = useState('')
+  const [dateOfBirth, setDateOfBirth] = useState('')
+  const [nationalRanking, setNationalRanking] = useState('')
+  const [district, setDistrict] = useState('')
+  const [trainingPlace, setTrainingPlace] = useState('')
+  const [athleteType, setAthleteType] = useState<'student' | 'university' | 'normal'>('normal')
 
   const needsDocument = (r: string) => ['athlete', 'coach', 'specialist'].includes(r)
   const hasSports = (r: string) => ['athlete', 'coach'].includes(r)
@@ -129,6 +137,16 @@ export default function RegisterPage() {
         formData.append('document', document)
         formData.append('documentType', documentType)
         if (selectedSports.length > 0) formData.append('sports', JSON.stringify(selectedSports))
+        
+        // Add athlete-specific fields
+        if (role === 'athlete') {
+          if (schoolClub) formData.append('schoolClub', schoolClub)
+          if (dateOfBirth) formData.append('dateOfBirth', dateOfBirth)
+          if (nationalRanking) formData.append('nationalRanking', nationalRanking)
+          if (district) formData.append('district', district)
+          if (trainingPlace) formData.append('trainingPlace', trainingPlace)
+          formData.append('athleteType', athleteType)
+        }
 
         const res = await fetch('/api/users/register', {
           method: 'POST',
@@ -325,6 +343,90 @@ export default function RegisterPage() {
                         <span className="text-sm">{sport}</span>
                       </label>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Athlete-specific fields */}
+              {role === 'athlete' && (
+                <div className="space-y-4 pt-4 border-t">
+                  <h3 className="font-semibold text-foreground">Additional Details</h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="athleteType">Athlete Type</Label>
+                      <select
+                        id="athleteType"
+                        value={athleteType}
+                        onChange={(e) => setAthleteType(e.target.value as 'student' | 'university' | 'normal')}
+                        disabled={loading}
+                        className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground"
+                      >
+                        <option value="normal">Normal</option>
+                        <option value="student">Student</option>
+                        <option value="university">University</option>
+                      </select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="schoolClub">School/Club Name</Label>
+                      <Input
+                        id="schoolClub"
+                        type="text"
+                        placeholder="St. Joseph College"
+                        value={schoolClub}
+                        onChange={(e) => setSchoolClub(e.target.value)}
+                        disabled={loading}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                      <Input
+                        id="dateOfBirth"
+                        type="date"
+                        value={dateOfBirth}
+                        onChange={(e) => setDateOfBirth(e.target.value)}
+                        disabled={loading}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="nationalRanking">National Ranking (Optional)</Label>
+                      <Input
+                        id="nationalRanking"
+                        type="number"
+                        placeholder="e.g., 5"
+                        value={nationalRanking}
+                        onChange={(e) => setNationalRanking(e.target.value)}
+                        disabled={loading}
+                        min="1"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="district">District</Label>
+                      <Input
+                        id="district"
+                        type="text"
+                        placeholder="Colombo"
+                        value={district}
+                        onChange={(e) => setDistrict(e.target.value)}
+                        disabled={loading}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="trainingPlace">Training Place</Label>
+                      <Input
+                        id="trainingPlace"
+                        type="text"
+                        placeholder="National Stadium"
+                        value={trainingPlace}
+                        onChange={(e) => setTrainingPlace(e.target.value)}
+                        disabled={loading}
+                      />
+                    </div>
                   </div>
                 </div>
               )}

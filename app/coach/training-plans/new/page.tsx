@@ -27,6 +27,7 @@ export default function NewTrainingPlanPage() {
   const [currentUser, setCurrentUser] = useState<any | null>(null)
   const [isLoadingUser, setIsLoadingUser] = useState(true)
   const [athletes, setAthletes] = useState<any[]>([])
+  const [approvedRegistrations, setApprovedRegistrations] = useState<any[]>([])
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -34,15 +35,14 @@ export default function NewTrainingPlanPage() {
     startDate: "",
     endDate: "",
   })
-  const [planAttachments, setPlanAttachments] = useState<File[]>([])
-  const [sessions, setSessions] = useState<{ 
+  const [tasks, setTasks] = useState<{ 
     name: string; 
-    date: string; 
-    duration: number;
-    description?: string;
-    attachments?: File[];
+    description: string;
+    startDate: string; 
+    endDate: string;
+    attachments: File[];
   }[]>([
-    { name: "", date: "", duration: 60, description: "", attachments: [] }
+    { name: "", description: "", startDate: "", endDate: "", attachments: [] }
   ])
   
   useEffect(() => {
@@ -57,16 +57,37 @@ export default function NewTrainingPlanPage() {
     
     const loadData = async () => {
       try {
-        const [userRes, athletesRes] = await Promise.all([
-          fetch("/api/users?role=coach&limit=1", { cache: "no-store" }),
+        const [userRes, athletesRes, approvedRegsRes] = await Promise.all([
+          fetch("/api/me", { cache: "no-store" }),
           fetch("/api/users?role=athlete&limit=200", { cache: "no-store" }),
+          fetch(`/api/sport-registrations?status=approved`, { cache: "no-store" }),
         ])
 
         const userData = await userRes.json()
         const athletesData = await athletesRes.json()
+        const approvedRegsData = await approvedRegsRes.json()
 
-        setCurrentUser(userData.users?.[0] || null)
-        setAthletes(athletesData.users || [])
+        if (userRes.ok && userData.user) {
+          setCurrentUser(userData.user)
+          
+          // Filter approved registrations for this coach
+          const coachApprovedRegs = (approvedRegsData.registrations || []).filter(
+            (reg: any) => reg.coach_id === userData.user.id
+          )
+          setApprovedRegistrations(coachApprovedRegs)
+          
+          // Get athlete IDs from approved registrations
+          const approvedAthleteIds = new Set(coachApprovedRegs.map((reg: any) => reg.athlete_id))
+          
+          // Filter athletes to only show those with approved registrations for this coach
+          const coachAthletes = (athletesData.users || []).filter((athlete: any) => 
+            approvedAthleteIds.has(athlete.id)
+          )
+          setAthletes(coachAthletes)
+        } else {
+          console.error("Failed to load user:", userData.error)
+          setAthletes([])
+        }
       } catch (error) {
         console.error("Failed to load training plan data", error)
       } finally {
@@ -93,52 +114,40 @@ export default function NewTrainingPlanPage() {
     )
   }
   
-  const addSession = () => {
-    setSessions([...sessions, { name: "", date: "", duration: 60, description: "", attachments: [] }])
+  const addTask = () => {
+    setTasks([...tasks, { name: "", description: "", startDate: "", endDate: "", attachments: [] }])
   }
   
-  const removeSession = (index: number) => {
-    setSessions(sessions.filter((_, i) => i !== index))
+  const removeTask = (index: number) => {
+    setTasks(tasks.filter((_, i) => i !== index))
   }
   
-  const updateSession = (index: number, field: string, value: string | number) => {
-    const updated = [...sessions]
+  const updateTask = (index: number, field: string, value: string) => {
+    const updated = [...tasks]
     updated[index] = { ...updated[index], [field]: value }
-    setSessions(updated)
+    setTasks(updated)
   }
   
-  const handlePlanFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleTaskFileUpload = (taskIndex: number, event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
     if (files) {
       const newFiles = Array.from(files)
-      setPlanAttachments(prev => [...prev, ...newFiles])
-    }
-  }
-  
-  const removePlanAttachment = (index: number) => {
-    setPlanAttachments(prev => prev.filter((_, i) => i !== index))
-  }
-  
-  const handleSessionFileUpload = (sessionIndex: number, event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files
-    if (files) {
-      const newFiles = Array.from(files)
-      const updated = [...sessions]
-      updated[sessionIndex] = { 
-        ...updated[sessionIndex], 
-        attachments: [...(updated[sessionIndex].attachments || []), ...newFiles] 
+      const updated = [...tasks]
+      updated[taskIndex] = { 
+        ...updated[taskIndex], 
+        attachments: [...(updated[taskIndex].attachments || []), ...newFiles] 
       }
-      setSessions(updated)
+      setTasks(updated)
     }
   }
   
-  const removeSessionAttachment = (sessionIndex: number, attachmentIndex: number) => {
-    const updated = [...sessions]
-    updated[sessionIndex] = {
-      ...updated[sessionIndex],
-      attachments: updated[sessionIndex].attachments?.filter((_, i) => i !== attachmentIndex) || []
+  const removeTaskAttachment = (taskIndex: number, attachmentIndex: number) => {
+    const updated = [...tasks]
+    updated[taskIndex] = {
+      ...updated[taskIndex],
+      attachments: updated[taskIndex].attachments?.filter((_, i) => i !== attachmentIndex) || []
     }
-    setSessions(updated)
+    setTasks(updated)
   }
   
   const handleSubmit = async (e: React.FormEvent) => {
@@ -146,14 +155,15 @@ export default function NewTrainingPlanPage() {
     
     if (!formData.name || formData.athleteIds.length === 0) return
     
-    const validSessions = sessions
-      .filter(s => s.name && s.date)
-      .map((session) => ({
-        name: session.name,
-        date: session.date,
-        duration: session.duration,
-        description: session.description,
-        attachments: session.attachments || [],
+    const validTasks = tasks
+      .filter(t => t.name && t.startDate && t.endDate)
+      .map((task, index) => ({
+        name: task.name,
+        description: task.description,
+        startDate: task.startDate,
+        endDate: task.endDate,
+        orderIndex: index,
+        attachments: task.attachments || [],
       }))
     
     try {
@@ -168,35 +178,18 @@ export default function NewTrainingPlanPage() {
           status: "active",
           startDate: formData.startDate,
           endDate: formData.endDate,
+          tasks: validTasks,
         }),
       })
 
-      const planData = await planRes.json()
-      const planId = planData?.trainingPlan?.id
-
-      if (planId) {
-        await Promise.all(
-          validSessions.map((session) =>
-            fetch("/api/training-sessions", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                planId,
-                name: session.name,
-                date: session.date,
-                mode: "physical",
-                duration: session.duration,
-                description: session.description,
-                attachments: (session.attachments || []).map((file) => file.name),
-              }),
-            })
-          )
-        )
+      if (!planRes.ok) {
+        throw new Error("Failed to create training plan")
       }
 
       router.push("/coach/training-plans")
     } catch (error) {
       console.error("Failed to create training plan", error)
+      alert("Failed to create training plan. Please try again.")
     }
   }
   
@@ -250,39 +243,50 @@ export default function NewTrainingPlanPage() {
               
               <div className="space-y-2">
                 <Label htmlFor="athletes" className="text-foreground">Select Athletes</Label>
-                <div className="space-y-2">
-                  {athletes.map((athlete) => (
-                    <div key={athlete.id} className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id={`athlete-${athlete.id}`}
-                        checked={formData.athleteIds.includes(athlete.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setFormData(prev => ({ 
-                              ...prev, 
-                              athleteIds: [...prev.athleteIds, athlete.id] 
-                            }))
-                          } else {
-                            setFormData(prev => ({ 
-                              ...prev, 
-                              athleteIds: prev.athleteIds.filter(id => id !== athlete.id) 
-                            }))
-                          }
-                        }}
-                        className="rounded border-border"
-                      />
-                      <label htmlFor={`athlete-${athlete.id}`} className="flex items-center gap-2 cursor-pointer">
-                        <Avatar className="h-6 w-6">
-                          <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                            {athlete.name.split(" ").map(n => n[0]).join("")}
-                          </AvatarFallback>
-                        </Avatar>
-                        {athlete.name} - {athlete.sport}
-                      </label>
-                    </div>
-                  ))}
-                </div>
+                {athletes.length === 0 ? (
+                  <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                    <p className="text-sm text-muted-foreground">
+                      No athletes available. Athletes must have approved sport registrations with you before they can be assigned to training plans.
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      Go to the <Link href="/coach/athletes" className="text-primary hover:underline">Athletes page</Link> to approve pending registrations.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {athletes.map((athlete) => (
+                      <div key={athlete.id} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={`athlete-${athlete.id}`}
+                          checked={formData.athleteIds.includes(athlete.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setFormData(prev => ({ 
+                                ...prev, 
+                                athleteIds: [...prev.athleteIds, athlete.id] 
+                              }))
+                            } else {
+                              setFormData(prev => ({ 
+                                ...prev, 
+                                athleteIds: prev.athleteIds.filter(id => id !== athlete.id) 
+                              }))
+                            }
+                          }}
+                          className="rounded border-border"
+                        />
+                        <label htmlFor={`athlete-${athlete.id}`} className="flex items-center gap-2 cursor-pointer">
+                          <Avatar className="h-6 w-6">
+                            <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                              {athlete.name.split(" ").map(n => n[0]).join("")}
+                            </AvatarFallback>
+                          </Avatar>
+                          {athlete.name} - {athlete.sport}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               
               {formData.athleteIds.length > 0 && (
@@ -316,44 +320,6 @@ export default function NewTrainingPlanPage() {
                 </div>
               )}
               
-              <div className="space-y-2">
-                <Label className="text-foreground">Plan Attachments</Label>
-                <div className="space-y-2">
-                  <input
-                    type="file"
-                    multiple
-                    accept="image/*,.pdf,.doc,.docx"
-                    onChange={handlePlanFileUpload}
-                    className="hidden"
-                    id="plan-attachments"
-                  />
-                  <label htmlFor="plan-attachments" className="flex items-center gap-2 cursor-pointer bg-secondary/50 hover:bg-secondary border border-border rounded-lg p-4 transition-colors">
-                    <Upload className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-muted-foreground">Click to upload files (images, PDFs, documents)</span>
-                  </label>
-                  
-                  {planAttachments.length > 0 && (
-                    <div className="space-y-2">
-                      {planAttachments.map((file, index) => (
-                        <div key={index} className="flex items-center gap-2 bg-secondary/50 p-2 rounded-lg">
-                          <span className="text-sm text-foreground flex-1">{file.name}</span>
-                          <span className="text-xs text-muted-foreground">
-                            ({(file.size / 1024 / 1024).toFixed(1)} MB)
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => removePlanAttachment(index)}
-                            className="text-destructive hover:text-destructive/80"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-              
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="startDate" className="text-foreground">Start Date</Label>
@@ -386,127 +352,122 @@ export default function NewTrainingPlanPage() {
             </CardContent>
           </Card>
           
-          {/* Sessions */}
+          {/* Tasks/Phases */}
           <Card className="bg-card border-border">
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
-                <CardTitle className="text-foreground">Training Sessions</CardTitle>
-                <CardDescription>Add individual training sessions to the plan</CardDescription>
+                <CardTitle className="text-foreground">Training Tasks/Phases</CardTitle>
+                <CardDescription>Add tasks or phases with specific goals and timeframes</CardDescription>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={addSession} className="border-border bg-transparent">
+              <Button type="button" variant="outline" size="sm" onClick={addTask} className="border-border bg-transparent">
                 <Plus className="h-4 w-4 mr-1" />
-                Add Session
+                Add Task
               </Button>
             </CardHeader>
             <CardContent className="space-y-4">
-              {sessions.map((session, index) => (
+              {tasks.map((task, index) => (
                 <div key={index} className="p-4 rounded-lg bg-secondary/50 border border-border">
-                  <Tabs defaultValue="details" className="w-full">
-                    <TabsList className="grid w-full grid-cols-3">
-                      <TabsTrigger value="details">Details</TabsTrigger>
-                      <TabsTrigger value="description">Description</TabsTrigger>
-                      <TabsTrigger value="attachments">Attachments</TabsTrigger>
-                    </TabsList>
+                  <div className="space-y-4">
+                    {/* Task Name */}
+                    <div className="space-y-2">
+                      <Label className="text-foreground text-sm">Task/Phase Name</Label>
+                      <Input
+                        placeholder="e.g., Strength Building Phase"
+                        value={task.name}
+                        onChange={(e) => updateTask(index, "name", e.target.value)}
+                        className="bg-input border-border"
+                      />
+                    </div>
                     
-                    <TabsContent value="details" className="space-y-4 mt-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                          <Label className="text-foreground text-sm">Session Name</Label>
-                          <Input
-                            placeholder="e.g., Speed Drills"
-                            value={session.name}
-                            onChange={(e) => updateSession(index, "name", e.target.value)}
-                            className="bg-input border-border"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-foreground text-sm">Date</Label>
+                    {/* Description */}
+                    <div className="space-y-2">
+                      <Label className="text-foreground text-sm">Description & Instructions</Label>
+                      <Textarea
+                        placeholder="Describe the goals, exercises, and instructions for this task..."
+                        value={task.description}
+                        onChange={(e) => updateTask(index, "description", e.target.value)}
+                        className="bg-input border-border min-h-[100px]"
+                      />
+                    </div>
+                    
+                    {/* Dates */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-foreground text-sm">Start Date</Label>
+                        <div className="relative">
+                          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                           <Input
                             type="date"
-                            value={session.date}
-                            onChange={(e) => updateSession(index, "date", e.target.value)}
-                            className="bg-input border-border"
+                            value={task.startDate}
+                            onChange={(e) => updateTask(index, "startDate", e.target.value)}
+                            className="bg-input border-border pl-10"
                           />
                         </div>
-                        <div className="space-y-2">
-                          <Label className="text-foreground text-sm">Duration (min)</Label>
-                          <div className="relative">
-                            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input
-                              type="number"
-                              min="15"
-                              max="240"
-                              value={session.duration}
-                              onChange={(e) => updateSession(index, "duration", parseInt(e.target.value))}
-                              className="bg-input border-border pl-10"
-                            />
-                          </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-foreground text-sm">End Date</Label>
+                        <div className="relative">
+                          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            type="date"
+                            value={task.endDate}
+                            onChange={(e) => updateTask(index, "endDate", e.target.value)}
+                            className="bg-input border-border pl-10"
+                          />
                         </div>
                       </div>
-                    </TabsContent>
+                    </div>
                     
-                    <TabsContent value="description" className="space-y-4 mt-4">
-                      <div className="space-y-2">
-                        <Label className="text-foreground text-sm">Session Description</Label>
-                        <Textarea
-                          placeholder="Describe the session objectives, exercises, and instructions..."
-                          value={session.description || ""}
-                          onChange={(e) => updateSession(index, "description", e.target.value)}
-                          className="bg-input border-border min-h-[100px]"
-                        />
-                      </div>
-                    </TabsContent>
-                    
-                    <TabsContent value="attachments" className="space-y-4 mt-4">
-                      <div className="space-y-2">
-                        <Label className="text-foreground text-sm">Session Attachments</Label>
-                        <input
-                          type="file"
-                          multiple
-                          accept="image/*,.pdf,.doc,.docx"
-                          onChange={(e) => handleSessionFileUpload(index, e)}
-                          className="hidden"
-                          id={`session-attachments-${index}`}
-                        />
-                        <label htmlFor={`session-attachments-${index}`} className="flex items-center gap-2 cursor-pointer bg-secondary/50 hover:bg-secondary border border-border rounded-lg p-4 transition-colors">
-                          <Upload className="h-5 w-5 text-muted-foreground" />
-                          <span className="text-muted-foreground">Click to upload files (images, PDFs, documents)</span>
-                        </label>
-                        
-                        {session.attachments && session.attachments.length > 0 && (
-                          <div className="space-y-2">
-                            {session.attachments.map((file, attachmentIndex) => (
-                              <div key={attachmentIndex} className="flex items-center gap-2 bg-secondary/50 p-2 rounded-lg">
-                                <span className="text-sm text-foreground flex-1">{file.name}</span>
-                                <span className="text-xs text-muted-foreground">
-                                  ({(file.size / 1024 / 1024).toFixed(1)} MB)
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => removeSessionAttachment(index, attachmentIndex)}
-                                  className="text-destructive hover:text-destructive/80"
-                                >
-                                  <X className="h-4 w-4" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </TabsContent>
-                  </Tabs>
+                    {/* Attachments */}
+                    <div className="space-y-2">
+                      <Label className="text-foreground text-sm">Coach Materials</Label>
+                      <p className="text-xs text-muted-foreground">Upload reference materials, training videos, or instructions</p>
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/*,video/*,.pdf,.doc,.docx"
+                        onChange={(e) => handleTaskFileUpload(index, e)}
+                        className="hidden"
+                        id={`task-attachments-${index}`}
+                      />
+                      <label htmlFor={`task-attachments-${index}`} className="flex items-center gap-2 cursor-pointer bg-secondary/50 hover:bg-secondary border border-border rounded-lg p-4 transition-colors">
+                        <Upload className="h-5 w-5 text-muted-foreground" />
+                        <span className="text-muted-foreground">Upload materials (images, videos, PDFs, documents)</span>
+                      </label>
+                      
+                      {task.attachments && task.attachments.length > 0 && (
+                        <div className="space-y-2">
+                          {task.attachments.map((file, attachmentIndex) => (
+                            <div key={attachmentIndex} className="flex items-center gap-2 bg-secondary/50 p-2 rounded-lg">
+                              <span className="text-sm text-foreground flex-1">{file.name}</span>
+                              <span className="text-xs text-muted-foreground">
+                                ({(file.size / 1024 / 1024).toFixed(1)} MB)
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => removeTaskAttachment(index, attachmentIndex)}
+                                className="text-destructive hover:text-destructive/80"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   
-                  {sessions.length > 1 && (
+                  {tasks.length > 1 && (
                     <div className="flex justify-end mt-4">
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => removeSession(index)}
+                        onClick={() => removeTask(index)}
                         className="text-destructive hover:text-destructive hover:bg-destructive/10"
                       >
                         <Trash2 className="h-4 w-4 mr-1" />
-                        Remove Session
+                        Remove Task
                       </Button>
                     </div>
                   )}

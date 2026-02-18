@@ -31,9 +31,14 @@ export default function TrainingDetailPage({ params }: { params: Promise<{ id: s
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const res = await fetch("/api/users?role=athlete&limit=1", { cache: "no-store" })
+        const res = await fetch("/api/me", { cache: "no-store" })
         const data = await res.json()
-        setCurrentUser(data.users?.[0] || null)
+        
+        if (res.ok && data.user) {
+          setCurrentUser(data.user)
+        } else {
+          console.error("Failed to load user:", data.error)
+        }
       } catch (error) {
         console.error("Failed to load athlete user", error)
       } finally {
