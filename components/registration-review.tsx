@@ -23,6 +23,7 @@ interface User {
   isAdmin?: boolean
   profileVerified?: boolean
   documents?: any[]
+  created_at?: string
 }
 
 interface RegistrationReviewProps {
@@ -233,7 +234,7 @@ export function RegistrationReview({
         <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
           <span className="text-sm text-muted-foreground">Registered</span>
           <span className="text-sm font-medium text-foreground">
-            {new Date(user.createdAt || new Date()).toLocaleDateString()}
+            {new Date(user.created_at || new Date()).toLocaleDateString()}
           </span>
         </div>
 

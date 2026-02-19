@@ -21,7 +21,9 @@ import {
   AlertCircle,
   FileCheck,
   Users,
+  MessageSquare,
 } from "lucide-react"
+import { RealtimeChat } from "@/components/realtime-chat"
 
 export default function OfficialDashboard() {
   const [currentUser, setCurrentUser] = useState<any | null>(null)
@@ -38,6 +40,10 @@ export default function OfficialDashboard() {
   const [isLoadingRegistrations, setIsLoadingRegistrations] = useState(false)
   const [profileChangeRequests, setProfileChangeRequests] = useState<any[]>([])
   const [isLoadingProfileChanges, setIsLoadingProfileChanges] = useState(false)
+  const [sportCommunities, setSportCommunities] = useState<any[]>([])
+  const [isLoadingCommunities, setIsLoadingCommunities] = useState(false)
+  const [communitiesError, setCommunitiesError] = useState('')
+  const [selectedCommunity, setSelectedCommunity] = useState<any | null>(null)
 
   const normalizeRegistration = (user: any) => ({
     id: user.id,
@@ -125,6 +131,58 @@ export default function OfficialDashboard() {
 
     loadData()
   }, [])
+
+  const fetchSportCommunities = async () => {
+    setIsLoadingCommunities(true)
+    setCommunitiesError('')
+    try {
+      const response = await fetch("/api/official/sport-communities", { cache: "no-store" })
+      const data = await response.json()
+
+      if (!response.ok) {
+        setCommunitiesError(data.error || "Failed to load sport communities")
+        setSportCommunities([])
+        return
+      }
+
+      setSportCommunities(data.sports || [])
+    } catch (error) {
+      console.error("Failed to load sport communities", error)
+      setCommunitiesError("Failed to load sport communities")
+      setSportCommunities([])
+    } finally {
+      setIsLoadingCommunities(false)
+    }
+  }
+
+  const handleCreateCommunity = async (sport: string) => {
+    try {
+      const response = await fetch("/api/official/sport-communities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sport }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        alert(data.error || "Failed to create community")
+        return
+      }
+
+      await fetchSportCommunities()
+      setSelectedCommunity(data.community)
+    } catch (error) {
+      console.error("Failed to create community", error)
+      alert("Failed to create community")
+    }
+  }
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchSportCommunities()
+    }
+  }, [currentUser])
 
   const pendingVerifications = pendingAchievements
 
@@ -362,7 +420,7 @@ export default function OfficialDashboard() {
         
         {/* Main Content with Tabs */}
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 bg-muted">
+          <TabsList className="grid w-full grid-cols-5 bg-muted">
             <TabsTrigger value="overview" className="text-foreground">Overview</TabsTrigger>
             <TabsTrigger value="registrations" className="text-foreground">
               Registrations
@@ -388,10 +446,60 @@ export default function OfficialDashboard() {
                 </Badge>
               )}
             </TabsTrigger>
+            <TabsTrigger value="communities" className="text-foreground">
+              Communities
+            </TabsTrigger>
           </TabsList>
           
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6 pt-6">
+
+        {/* Sport Registration Overview */}
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <CardTitle className="text-foreground">Athletes by Sport</CardTitle>
+            <CardDescription>Registered athletes and coaches per sport</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingCommunities ? (
+              <div className="text-sm text-muted-foreground">Loading sport counts...</div>
+            ) : communitiesError ? (
+              <div className="text-sm text-destructive">{communitiesError}</div>
+            ) : sportCommunities.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No sport registrations yet.</div>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {sportCommunities.map((item) => (
+                  <div key={item.sport} className="rounded-lg border border-border p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Sport</p>
+                        <p className="text-lg font-semibold text-foreground">{item.sport}</p>
+                      </div>
+                      <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <Users className="h-4 w-4 text-primary" />
+                      </div>
+                    </div>
+                    <div className="mt-3 space-y-1 text-sm text-muted-foreground">
+                      <div className="flex items-center justify-between">
+                        <span>Athletes</span>
+                        <span className="text-foreground font-medium">{item.athleteCount}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Coaches</span>
+                        <span className="text-foreground font-medium">{item.coachCount}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Total registrations</span>
+                        <span className="text-foreground font-medium">{item.registrationCount}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
         
         {/* Main Content */}
         <div className="grid lg:grid-cols-3 gap-6">
@@ -789,7 +897,10 @@ export default function OfficialDashboard() {
                   .filter((r: any) => r.status === 'pending')
                   .map((request) => {
                     const athlete = getUserById(request.user_id);
-                    const changes = JSON.parse(request.requested_changes || '{}');
+                    // requested_changes is already a JSONB object, no need to parse
+                    const changes = typeof request.requested_changes === 'string' 
+                      ? JSON.parse(request.requested_changes) 
+                      : (request.requested_changes || {});
                     
                     return (
                       <Card key={request.id} className="bg-card border-border">
@@ -980,6 +1091,116 @@ export default function OfficialDashboard() {
                       </Card>
                     );
                   })}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Communities Tab */}
+          <TabsContent value="communities" className="space-y-6 pt-6">
+            {selectedCommunity ? (
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <Button variant="outline" onClick={() => setSelectedCommunity(null)}>
+                    ← Back
+                  </Button>
+                  <div>
+                    <h2 className="text-2xl font-semibold text-foreground">
+                      {selectedCommunity.name}
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      Live community chat for {selectedCommunity.name}
+                    </p>
+                  </div>
+                </div>
+
+                <Card className="bg-card border-border">
+                  <CardContent className="p-0">
+                    <div className="h-[600px]">
+                      <RealtimeChat
+                        communityId={selectedCommunity.id}
+                        communityName={selectedCommunity.name}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-semibold text-foreground">Sport Communities</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Create and manage sport communities for automatic athlete and coach messaging.
+                  </p>
+                </div>
+
+                {isLoadingCommunities ? (
+                  <div className="text-sm text-muted-foreground">Loading sport communities...</div>
+                ) : communitiesError ? (
+                  <div className="text-sm text-destructive">{communitiesError}</div>
+                ) : sportCommunities.length === 0 ? (
+                  <Card className="bg-card border-border">
+                    <CardContent className="py-12 text-center">
+                      <MessageSquare className="h-12 w-12 mx-auto mb-3 text-primary opacity-60" />
+                      <p className="text-muted-foreground">No sport registrations yet.</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {sportCommunities.map((item) => (
+                      <Card key={item.sport} className="bg-card border-border">
+                        <CardHeader>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <CardTitle className="text-foreground">{item.sport}</CardTitle>
+                              <CardDescription>
+                                {item.athleteCount} athletes • {item.coachCount} coaches
+                              </CardDescription>
+                            </div>
+                            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                              <MessageSquare className="h-5 w-5 text-primary" />
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          {item.community ? (
+                            <div className="flex items-center justify-between text-sm text-muted-foreground">
+                              <span>Community members</span>
+                              <span className="text-foreground font-medium">
+                                {item.community.memberCount}
+                              </span>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">
+                              Community not created yet.
+                            </p>
+                          )}
+
+                          {item.community ? (
+                            <Button
+                              className="w-full"
+                              onClick={() =>
+                                setSelectedCommunity({
+                                  id: item.community.id,
+                                  name: item.community.name,
+                                })
+                              }
+                            >
+                              Open Community Chat
+                            </Button>
+                          ) : (
+                            <Button
+                              className="w-full"
+                              variant="outline"
+                              onClick={() => handleCreateCommunity(item.sport)}
+                            >
+                              Create Community
+                            </Button>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </TabsContent>

@@ -1,12 +1,17 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   CheckCircle,
   User,
@@ -14,15 +19,28 @@ import {
   Target,
   Award,
   TrendingUp,
+  Stethoscope,
+  FileText,
+  AlertCircle,
+  Clock,
 } from "lucide-react"
 
 export default function SpecialistDashboard() {
+  const router = useRouter()
   const [currentUser, setCurrentUser] = useState<any | null>(null)
   const [isLoadingUser, setIsLoadingUser] = useState(true)
   const [consultations, setConsultations] = useState<any[]>([])
+  const [pendingConsultations, setPendingConsultations] = useState<any[]>([])
+  const [medicalLeaves, setMedicalLeaves] = useState<any[]>([])
   const [athletes, setAthletes] = useState<Record<string, any>>({})
   const [coachCache, setCoachCache] = useState<Record<string, any>>({})
   const [athletePlans, setAthletePlans] = useState<Record<string, any>>({})
+  
+  // Modal states for reviewing
+  const [selectedConsultation, setSelectedConsultation] = useState<any | null>(null)
+  const [selectedMedicalLeave, setSelectedMedicalLeave] = useState<any | null>(null)
+  const [isReviewing, setIsReviewing] = useState(false)
+  const [reviewFormData, setReviewFormData] = useState<any>({})
   
   useEffect(() => {
     const loadUser = async () => {
@@ -50,15 +68,22 @@ export default function SpecialistDashboard() {
 
     const loadData = async () => {
       try {
-        const [consultationsRes, athletesRes] = await Promise.all([
+        const [myConsultationsRes, pendingConsultationsRes, medicalLeavesRes, athletesRes] = await Promise.all([
           fetch(`/api/consultations?specialistId=${currentUser.id}`, { cache: "no-store" }),
+          fetch(`/api/consultations?status=pending`, { cache: "no-store" }),
+          fetch(`/api/medical-leaves?specialistId=${currentUser.id}`, { cache: "no-store" }),
           fetch(`/api/users?role=athlete&limit=200`, { cache: "no-store" }),
         ])
 
-        const consultationsData = await consultationsRes.json()
+        const myConsultationsData = await myConsultationsRes.json()
+        const pendingConsultationsData = await pendingConsultationsRes.json()
+        const medicalLeavesData = await medicalLeavesRes.json()
         const athletesData = await athletesRes.json()
 
-        setConsultations(consultationsData.consultations || [])
+        setConsultations(myConsultationsData.consultations || [])
+        setPendingConsultations(pendingConsultationsData.consultations || [])
+        setMedicalLeaves(medicalLeavesData.medicalLeaves || [])
+        
         const athleteMap: Record<string, any> = {}
         ;(athletesData.users || []).forEach((athlete: any) => {
           athleteMap[athlete.id] = {
@@ -76,9 +101,71 @@ export default function SpecialistDashboard() {
     loadData()
   }, [currentUser])
 
+  // Handlers for consultations and medical leaves
+  const handleAcceptConsultation = async (consultationId: string) => {
+    try {
+      const res = await fetch(`/api/consultations/${consultationId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ specialist_id: currentUser.id }),
+      })
+      
+      if (res.ok) {
+        // Refresh data
+        const updatedConsultation = await res.json()
+        setPendingConsultations(prev => prev.filter(c => c.id !== consultationId))
+        setConsultations(prev => [...prev, updatedConsultation.consultation])
+        alert("Consultation accepted successfully!")
+      } else {
+        alert("Failed to accept consultation")
+      }
+    } catch (error) {
+      console.error("Error accepting consultation:", error)
+      alert("An error occurred")
+    }
+  }
+
+  const handleReviewMedicalLeave = async () => {
+    if (!selectedMedicalLeave) return
+    
+    setIsReviewing(true)
+    try {
+      const res = await fetch(`/api/medical-leaves/${selectedMedicalLeave.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          specialist_review: reviewFormData.specialist_review,
+          specialist_recommendation: reviewFormData.specialist_recommendation,
+        }),
+      })
+      
+      if (res.ok) {
+        // Refresh medical leaves
+        const updatedLeave = await res.json()
+        setMedicalLeaves(prev => prev.map(ml => ml.id === selectedMedicalLeave.id ? updatedLeave.medicalLeave : ml))
+        setSelectedMedicalLeave(null)
+        setReviewFormData({})
+        alert("Medical leave reviewed successfully!")
+      } else {
+        const data = await res.json()
+        alert(`Error: ${data.error}`)
+      }
+    } catch (error) {
+      console.error("Error reviewing medical leave:", error)
+      alert("An error occurred")
+    } finally {
+      setIsReviewing(false)
+    }
+  }
+
   const completedConsultations = useMemo(
     () => consultations.filter(c => c.status === "completed"),
     [consultations]
+  )
+
+  const pendingMedicalLeaves = useMemo(
+    () => medicalLeaves.filter(ml => ml.status === "pending_specialist_review"),
+    [medicalLeaves]
   )
 
   const clientIds = useMemo(
@@ -228,10 +315,38 @@ export default function SpecialistDashboard() {
         </div>
         
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="bg-card border-border">
             <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Pending Consultations</p>
+                  <p className="text-2xl font-bold text-foreground">{pendingConsultations.length}</p>
+                </div>
+                <div className="h-10 w-10 rounded-lg bg-yellow-500/10 flex items-center justify-center">
+                  <Clock className="h-5 w-5 text-yellow-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Medical Leave Reviews</p>
+                  <p className="text-2xl font-bold text-foreground">{pendingMedicalLeaves.length}</p>
+                </div>
+                <div className="h-10 w-10 rounded-lg bg-red-500/10 flex items-center justify-center">
+                  <FileText className="h-5 w-5 text-red-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Completed Consultations</p>
                   <p className="text-2xl font-bold text-foreground">{completedStats.total}</p>
@@ -240,37 +355,12 @@ export default function SpecialistDashboard() {
                   <CheckCircle className="h-5 w-5 text-primary" />
                 </div>
               </div>
-              {completedStats.total > 0 && (
-                <div className="space-y-2">
-                  <div className="text-xs text-muted-foreground">By Sport:</div>
-                  {Object.entries(completedStats.bySport).map(([sport, count]) => (
-                    <div key={sport} className="flex justify-between text-xs">
-                      <span>{sport}</span>
-                      <span>{count} ({Math.round((count / completedStats.total) * 100)}%)</span>
-                    </div>
-                  ))}
-                  <div className="text-xs text-muted-foreground mt-2">By Coach:</div>
-                  {Object.entries(completedStats.byCoach).map(([coach, count]) => (
-                    <div key={coach} className="flex justify-between text-xs">
-                      <span>{coach}</span>
-                      <span>{count} ({Math.round((count / completedStats.total) * 100)}%)</span>
-                    </div>
-                  ))}
-                  <div className="text-xs text-muted-foreground mt-2">By Program:</div>
-                  {Object.entries(completedStats.byProgram).map(([program, count]) => (
-                    <div key={program} className="flex justify-between text-xs">
-                      <span>{program}</span>
-                      <span>{count} ({Math.round((count / completedStats.total) * 100)}%)</span>
-                    </div>
-                  ))}
-                </div>
-              )}
             </CardContent>
           </Card>
           
           <Card className="bg-card border-border">
             <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Active Clients</p>
                   <p className="text-2xl font-bold text-foreground">{activeClientsStats.total}</p>
@@ -279,41 +369,157 @@ export default function SpecialistDashboard() {
                   <User className="h-5 w-5 text-primary" />
                 </div>
               </div>
-              {activeClientsStats.total > 0 && (
-                <div className="space-y-2">
-                  <div className="text-xs text-muted-foreground">By Sport:</div>
-                  {Object.entries(activeClientsStats.bySport).map(([sport, count]) => (
-                    <div key={sport} className="flex justify-between text-xs">
-                      <span>{sport}</span>
-                      <span>{count} ({Math.round((count / activeClientsStats.total) * 100)}%)</span>
-                    </div>
-                  ))}
-                  <div className="text-xs text-muted-foreground mt-2">By Coach:</div>
-                  {Object.entries(activeClientsStats.byCoach).map(([coach, count]) => (
-                    <div key={coach} className="flex justify-between text-xs">
-                      <span>{coach}</span>
-                      <span>{count} ({Math.round((count / activeClientsStats.total) * 100)}%)</span>
-                    </div>
-                  ))}
-                  <div className="text-xs text-muted-foreground mt-2">By Program:</div>
-                  {Object.entries(activeClientsStats.byProgram).map(([program, count]) => (
-                    <div key={program} className="flex justify-between text-xs">
-                      <span>{program}</span>
-                      <span>{count} ({Math.round((count / activeClientsStats.total) * 100)}%)</span>
-                    </div>
-                  ))}
-                </div>
-              )}
             </CardContent>
           </Card>
         </div>
         
         {/* Main Content - Detailed Client Dashboard */}
-        <Tabs defaultValue="active-clients" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs defaultValue="pending" className="space-y-4">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="pending">Pending Work</TabsTrigger>
             <TabsTrigger value="active-clients">Active Clients</TabsTrigger>
             <TabsTrigger value="completed">Completed</TabsTrigger>
           </TabsList>
+          
+          <TabsContent value="pending" className="space-y-4">
+            {/* Pending Consultations */}
+            <Card className="bg-card border-border">
+              <CardHeader>
+                <CardTitle className="text-foreground flex items-center gap-2">
+                  <Stethoscope className="h-5 w-5" />
+                  Consultation Requests ({pendingConsultations.length})
+                </CardTitle>
+                <CardDescription>
+                  New consultation requests from athletes waiting for specialist assignment
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {pendingConsultations.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Stethoscope className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>No pending consultation requests</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {pendingConsultations.map((consultation) => {
+                      const athleteId = consultation.athlete_id
+                      const athlete = athletes[athleteId]
+                      
+                      return (
+                        <div key={consultation.id} className="p-4 rounded-lg bg-secondary/50 border border-border">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-start gap-3 flex-1">
+                              <Avatar className="h-10 w-10">
+                                <AvatarFallback className="bg-primary/10 text-primary">
+                                  {athlete?.name ? athlete.name.split(" ").map(n => n[0]).join("") : "?"}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h4 className="font-medium text-foreground">{athlete?.name || "Unknown"}</h4>
+                                  <Badge className="bg-yellow-500/20 text-yellow-700">
+                                    {consultation.urgency || "normal"}
+                                  </Badge>
+                                </div>
+                                <p className="text-sm text-muted-foreground mb-2">
+                                  {consultation.consultation_type?.replace(/_/g, ' ')}
+                                </p>
+                                <p className="text-sm text-foreground mb-2">{consultation.reason}</p>
+                                {consultation.symptoms && (
+                                  <p className="text-xs text-muted-foreground">Symptoms: {consultation.symptoms}</p>
+                                )}
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  Requested: {new Date(consultation.created_at).toLocaleString()}
+                                </p>
+                              </div>
+                            </div>
+                            <Button
+                              onClick={() => handleAcceptConsultation(consultation.id)}
+                              className="bg-primary text-primary-foreground"
+                            >
+                              Accept
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Medical Leave Reviews */}
+            <Card className="bg-card border-border">
+              <CardHeader>
+                <CardTitle className="text-foreground flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Medical Leave Reviews ({pendingMedicalLeaves.length})
+                </CardTitle>
+                <CardDescription>
+                  Medical leave requests requiring specialist review and recommendation
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {pendingMedicalLeaves.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <FileText className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>No pending medical leave reviews</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {pendingMedicalLeaves.map((leave) => {
+                      const athleteId = leave.athlete_id
+                      const athlete = athletes[athleteId]
+                      
+                      return (
+                        <div key={leave.id} className="p-4 rounded-lg bg-secondary/50 border border-border">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-start gap-3 flex-1">
+                              <Avatar className="h-10 w-10">
+                                <AvatarFallback className="bg-primary/10 text-primary">
+                                  {athlete?.name ? athlete.name.split(" ").map(n => n[0]).join("") : "?"}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h4 className="font-medium text-foreground">{athlete?.name || "Unknown"}</h4>
+                                  <Badge className="bg-blue-500/20 text-blue-700">
+                                    {leave.leave_type?.replace(/_/g, ' ')}
+                                  </Badge>
+                                </div>
+                                <p className="text-sm text-muted-foreground mb-2">
+                                  {leave.duration_days} days • {new Date(leave.start_date).toLocaleDateString()} - {new Date(leave.end_date).toLocaleDateString()}
+                                </p>
+                                <p className="text-sm text-foreground mb-2">{leave.reason}</p>
+                                <div className="flex items-center gap-2 mb-2 p-2 bg-background/50 rounded">
+                                  <User className="h-3 w-3 text-muted-foreground" />
+                                  <span className="text-xs text-muted-foreground">
+                                    Coach: {leave.coach_name || "Unknown"}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Requested: {new Date(leave.created_at).toLocaleString()}
+                                </p>
+                              </div>
+                            </div>
+                            <Button
+                              onClick={() => {
+                                setSelectedMedicalLeave(leave)
+                                setReviewFormData({})
+                              }}
+                              className="bg-primary text-primary-foreground"
+                            >
+                              Review
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
           
           <TabsContent value="active-clients" className="space-y-4">
             <Card className="bg-card border-border">
@@ -477,6 +683,104 @@ export default function SpecialistDashboard() {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Medical Leave Review Dialog */}
+        <Dialog open={!!selectedMedicalLeave} onOpenChange={() => setSelectedMedicalLeave(null)}>
+          <DialogContent className="bg-card border-border max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-foreground">Review Medical Leave Request</DialogTitle>
+              <DialogDescription>
+                Provide your medical review and recommendation for the athlete's medical leave
+              </DialogDescription>
+            </DialogHeader>
+            {selectedMedicalLeave && (
+              <div className="space-y-4 py-4">
+                <div className="p-3 rounded-lg bg-secondary/50">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Athlete</Label>
+                      <p className="font-medium text-foreground">{selectedMedicalLeave.athlete_name}</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Coach</Label>
+                      <p className="font-medium text-foreground">{selectedMedicalLeave.coach_name}</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Leave Type</Label>
+                      <p className="font-medium text-foreground capitalize">{selectedMedicalLeave.leave_type?.replace(/_/g, ' ')}</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Duration</Label>
+                      <p className="font-medium text-foreground">{selectedMedicalLeave.duration_days} days</p>
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <Label className="text-xs text-muted-foreground">Reason</Label>
+                    <p className="text-sm text-foreground">{selectedMedicalLeave.reason}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="review" className="text-foreground">Medical Review *</Label>
+                  <Textarea
+                    id="review"
+                    placeholder="Provide your medical assessment of the athlete's condition..."
+                    value={reviewFormData.specialist_review || ""}
+                    onChange={(e) => setReviewFormData({ ...reviewFormData, specialist_review: e.target.value })}
+                    className="bg-input border-border min-h-[120px]"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="recommendation" className="text-foreground">Recommendation *</Label>
+                  <Select
+                    value={reviewFormData.specialist_recommendation || ""}
+                    onValueChange={(value) => setReviewFormData({ ...reviewFormData, specialist_recommendation: value })}
+                  >
+                    <SelectTrigger className="bg-input border-border">
+                      <SelectValue placeholder="Select recommendation" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="approve_full_rest">Approve - Full Rest Required</SelectItem>
+                      <SelectItem value="approve_modified_training">Approve - Modified Training Allowed</SelectItem>
+                      <SelectItem value="needs_examination">Needs Further Medical Examination</SelectItem>
+                      <SelectItem value="reject">Reject - Not Medically Necessary</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                  <div className="flex gap-3">
+                    <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-foreground">
+                      <p className="font-medium mb-1">Review Process:</p>
+                      <p className="text-muted-foreground">
+                        Your medical review and recommendation will be sent to the coach ({selectedMedicalLeave.coach_name}) 
+                        who will make the final decision on training adjustments for the athlete.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 justify-end pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setSelectedMedicalLeave(null)}
+                    disabled={isReviewing}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleReviewMedicalLeave}
+                    disabled={isReviewing || !reviewFormData.specialist_review || !reviewFormData.specialist_recommendation}
+                  >
+                    {isReviewing ? "Submitting..." : "Submit Review"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   )

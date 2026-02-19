@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
+import { NotificationCenter } from "@/components/notification-center"
 import {
   Zap,
   LayoutDashboard,
@@ -23,7 +24,6 @@ import {
   Briefcase,
   User,
   MessageSquare,
-  Bell,
   LogOut,
   Users,
   ClipboardList,
@@ -93,9 +93,9 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const res = await fetch(`/api/users?role=${role}&limit=1`, { cache: "no-store" })
+        const res = await fetch(`/api/me`, { cache: "no-store" })
         const data = await res.json()
-        setCurrentUser(data.users?.[0] || null)
+        setCurrentUser(data.user || null)
       } catch (error) {
         console.error("Failed to load user", error)
       } finally {
@@ -111,7 +111,7 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
 
     const loadNotifications = async () => {
       try {
-        const res = await fetch(`/api/notifications?userId=${currentUser.id}`, { cache: "no-store" })
+        const res = await fetch(`/api/notifications?userId=${currentUser.id}&limit=50`, { cache: "no-store" })
         const data = await res.json()
         const unread = (data.notifications || []).filter((n: any) => !n.read).length
         setUnreadNotifications(unread)
@@ -188,16 +188,7 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
             </Link>
             
             {/* Notifications */}
-            <Link href={`/${role}/notifications`}>
-              <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:text-foreground">
-                <Bell className="h-5 w-5" />
-                {unreadNotifications > 0 && (
-                  <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 bg-accent text-accent-foreground text-xs">
-                    {unreadNotifications}
-                  </Badge>
-                )}
-              </Button>
-            </Link>
+            <NotificationCenter />
             
             {/* User Menu */}
             <DropdownMenu>

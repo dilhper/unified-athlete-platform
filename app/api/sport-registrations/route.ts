@@ -3,6 +3,39 @@ import { randomUUID } from 'crypto'
 import { query } from '@/lib/db'
 import { requirePermission, authErrorToResponse } from '@/lib/authz'
 
+const communityPrefix = 'Sport: '
+
+const ensureSportCommunity = async (sport: string, memberIds: string[], creatorId: string) => {
+  const communityName = `${communityPrefix}${sport}`
+
+  const existing = await query(
+    `SELECT id, member_ids FROM communities WHERE name = $1`,
+    [communityName]
+  )
+
+  if (existing.rowCount > 0) {
+    const currentMembers = existing.rows[0].member_ids || []
+    const updatedMembers = Array.from(new Set([...currentMembers, ...memberIds]))
+
+    await query(
+      `UPDATE communities
+       SET member_ids = $2
+       WHERE id = $1`,
+      [existing.rows[0].id, updatedMembers]
+    )
+    return
+  }
+
+  const id = randomUUID()
+  const description = `Community for ${sport} athletes and coaches`
+
+  await query(
+    `INSERT INTO communities (id, name, description, creator_id, member_ids, created_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())`,
+    [id, communityName, description, creatorId, memberIds]
+  )
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -85,6 +118,12 @@ export async function POST(request: Request) {
       RETURNING *`,
       [id, athleteId, coachId, sport, priority]
     )
+
+    try {
+      await ensureSportCommunity(sport, [athleteId, coachId], coachId)
+    } catch (communityError) {
+      console.error('Failed to auto-join sport community:', communityError)
+    }
 
     return NextResponse.json({ registration: result.rows[0] }, { status: 201 })
   } catch (error) {

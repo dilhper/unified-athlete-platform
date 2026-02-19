@@ -14,8 +14,8 @@ interface Community {
   id: string
   name: string
   description: string
-  members: Array<{ id: string; name: string }>
-  createdAt: string
+  member_ids: string[]
+  created_at: string
 }
 
 export default function CommunitiesPage() {
@@ -39,7 +39,12 @@ export default function CommunitiesPage() {
       const response = await fetch('/api/communities')
       if (response.ok) {
         const data = await response.json()
-        setCommunities(data)
+        const incoming = data.communities || []
+        const userId = (session?.user as any)?.id
+        const filtered = userId
+          ? incoming.filter((community: Community) => (community.member_ids || []).includes(userId))
+          : incoming
+        setCommunities(filtered)
       } else {
         setError('Failed to load communities')
       }
@@ -132,7 +137,7 @@ export default function CommunitiesPage() {
                   <div className="flex items-center gap-2">
                     <UserPlus className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm text-muted-foreground">
-                      {community.members.length} members
+                      {(community.member_ids || []).length} members
                     </span>
                   </div>
 

@@ -48,7 +48,8 @@ export const authOptions: NextAuthOptions = {
           id: user.id,
           email: user.email || user.phone,
           name: user.name,
-          image: user.avatar ?? undefined,
+          // Avoid storing large data URLs in JWT cookies (can cause HTTP 431)
+          image: undefined,
           role: user.role,
         } as any
       },
@@ -58,12 +59,16 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.role = (user as any).role
+        token.userId = (user as any).id
+        // Ensure large avatar data isn't stored in the token
+        delete (token as any).picture
       }
       return token
     },
     async session({ session, token }) {
       if (session.user) {
         ;(session.user as any).role = token.role
+        ;(session.user as any).id = (token as any).userId || token.sub
       }
       return session
     },

@@ -1,6 +1,24 @@
 ﻿import { NextResponse } from 'next/server'
-export const GET = () => NextResponse.json({ error: 'Route removed' }, { status: 410 })
-export const POST = () => NextResponse.json({ error: 'Route removed' }, { status: 410 })
-export const PUT = () => NextResponse.json({ error: 'Route removed' }, { status: 410 })
-export const DELETE = () => NextResponse.json({ error: 'Route removed' }, { status: 410 })
-export const PATCH = () => NextResponse.json({ error: 'Route removed' }, { status: 410 })
+import { query } from '@/lib/db'
+import { requirePermission, authErrorToResponse } from '@/lib/authz'
+
+export async function PATCH() {
+	try {
+		const user = await requirePermission('VIEW_NOTIFICATIONS')
+
+		const result = await query(
+			`UPDATE notifications
+			 SET read = true
+			 WHERE user_id = $1 AND read = false
+			 RETURNING id`,
+			[user.id]
+		)
+
+		return NextResponse.json({
+			updated: result.rowCount || 0,
+		})
+	} catch (error) {
+		console.error('Error marking notifications as read:', error)
+		return authErrorToResponse(error)
+	}
+}

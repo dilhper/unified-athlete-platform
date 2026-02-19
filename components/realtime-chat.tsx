@@ -118,14 +118,14 @@ export function RealtimeChat({ communityId, communityName }: RealtimeChatProps) 
               <div
                 key={message.id}
                 className={`flex gap-3 ${
-                  message.senderId === session.user?.email ? 'flex-row-reverse' : ''
+                  message.senderId === (session.user as any)?.id ? 'flex-row-reverse' : ''
                 }`}
               >
                 {/* Avatar */}
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src={message.sender.avatar} />
+                  <AvatarImage src={message.sender?.avatar} />
                   <AvatarFallback>
-                    {message.sender.name.charAt(0)}
+                    {(message.sender?.name || 'U').charAt(0)}
                   </AvatarFallback>
                 </Avatar>
 
@@ -139,16 +139,16 @@ export function RealtimeChat({ communityId, communityName }: RealtimeChatProps) 
                 >
                   <div className="flex gap-2 items-baseline mb-1">
                     <span className="text-sm font-semibold">
-                      {message.sender.name}
+                      {message.sender?.name || 'Unknown'}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {new Date(message.createdAt).toLocaleTimeString()}
+                      {new Date(message.createdAt || message.timestamp).toLocaleTimeString()}
                     </span>
                   </div>
 
                   <div
                     className={`rounded-lg px-3 py-2 max-w-xs ${
-                      message.senderId === session.user?.email
+                      message.senderId === (session.user as any)?.id
                         ? 'bg-blue-500 text-white'
                         : 'bg-muted'
                     }`}
@@ -157,7 +157,7 @@ export function RealtimeChat({ communityId, communityName }: RealtimeChatProps) 
                   </div>
 
                   {/* Delete button for own messages */}
-                  {message.senderId === session.user?.email && (
+                  {message.senderId === (session.user as any)?.id && (
                     <button
                       onClick={() => handleDeleteMessage(message.id)}
                       className="text-xs text-muted-foreground hover:text-destructive mt-1"

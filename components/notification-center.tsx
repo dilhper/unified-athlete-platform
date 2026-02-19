@@ -17,10 +17,10 @@ interface Notification {
   type: string
   title: string
   message: string
-  data: Record<string, any>
-  userId: string
+  action_url?: string
+  user_id: string
   read: boolean
-  createdAt: string
+  created_at: string
 }
 
 export function NotificationCenter() {
@@ -36,11 +36,19 @@ export function NotificationCenter() {
   const fetchNotifications = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch('/api/notifications?limit=10')
+      const meRes = await fetch('/api/me', { cache: 'no-store' })
+      const meData = await meRes.json()
+      if (!meRes.ok || !meData.user?.id) {
+        setNotifications([])
+        setUnreadCount(0)
+        return
+      }
+
+      const response = await fetch(`/api/notifications?userId=${meData.user.id}&limit=10`)
       if (response.ok) {
         const data = await response.json()
-        setNotifications(data.notifications)
-        setUnreadCount(data.notifications.filter((n: Notification) => !n.read).length)
+        setNotifications(data.notifications || [])
+        setUnreadCount((data.notifications || []).filter((n: Notification) => !n.read).length)
       }
     } catch (error) {
       console.error('Error fetching notifications:', error)
@@ -52,7 +60,7 @@ export function NotificationCenter() {
   const markAsRead = async (notificationId: string) => {
     try {
       await fetch(`/api/notifications/${notificationId}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ read: true }),
       })
@@ -80,8 +88,8 @@ export function NotificationCenter() {
 
   const markAllAsRead = async () => {
     try {
-      await fetch('/api/notifications/mark-all-read', {
-        method: 'PUT',
+      await fetch('/api/notifications/read-all', {
+        method: 'PATCH',
       })
 
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
@@ -155,7 +163,7 @@ export function NotificationCenter() {
                           {notification.message}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {new Date(notification.createdAt).toLocaleString()}
+                          {new Date(notification.created_at).toLocaleString()}
                         </p>
                       </div>
 

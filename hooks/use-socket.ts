@@ -20,7 +20,7 @@ export const useSocket = (communityId?: string) => {
     const newSocket = io(socketUrl, {
       auth: {
         token: (session as any)?.accessToken || '',
-        userId: session.user.email || '',
+        userId: (session.user as any).id || '',
       },
       reconnection: true,
       reconnectionDelay: 1000,
@@ -61,12 +61,36 @@ export const useSocket = (communityId?: string) => {
     }
   }, [socket, communityId])
 
+  // Load initial messages
+  useEffect(() => {
+    if (!communityId) return
+
+    const loadMessages = async () => {
+      try {
+        const response = await fetch(`/api/messages?communityId=${communityId}`, { cache: 'no-store' })
+        if (!response.ok) return
+        const data = await response.json()
+        const incoming = Array.isArray(data.messages) ? data.messages : []
+        setMessages(incoming)
+      } catch (error) {
+        console.error('Failed to load messages', error)
+      }
+    }
+
+    loadMessages()
+  }, [communityId])
+
   // Listen for messages
   useEffect(() => {
     if (!socket) return
 
     const handleNewMessage = (message: any) => {
-      setMessages((prev) => [...prev, message])
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === message.id)) {
+          return prev
+        }
+        return [...prev, message]
+      })
     }
 
     const handleMessageDeleted = (data: { messageId: string }) => {

@@ -31,9 +31,9 @@ export default function MessagesPage() {
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const res = await fetch("/api/users?limit=1", { cache: "no-store" });
+        const res = await fetch("/api/me", { cache: "no-store" });
         const data = await res.json();
-        setCurrentUser(data.users?.[0] || null);
+        setCurrentUser(data.user || null);
       } catch (error) {
         console.error("Failed to load user", error);
       } finally {
@@ -88,7 +88,7 @@ export default function MessagesPage() {
           senderId: msg.sender_id ?? msg.senderId,
           receiverId: msg.receiver_id ?? msg.receiverId,
           communityId: msg.community_id ?? msg.communityId,
-          timestamp: msg.timestamp ?? msg.created_at,
+          timestamp: msg.timestamp ?? msg.created_at ?? msg.createdAt,
         }));
         setCommunityMessages(normalized);
       } catch (error) {
@@ -151,7 +151,7 @@ export default function MessagesPage() {
       senderId: msg.sender_id ?? msg.senderId,
       receiverId: msg.receiver_id ?? msg.receiverId,
       communityId: msg.community_id ?? msg.communityId,
-      timestamp: msg.timestamp ?? msg.created_at,
+      timestamp: msg.timestamp ?? msg.created_at ?? msg.createdAt,
     }));
     setCommunityMessages(normalized);
     setNewMessage("");

@@ -37,22 +37,6 @@ export default function OfficialHistoryPage() {
     loadUser()
   }, [])
 
-  if (isLoadingUser) {
-    return (
-      <DashboardLayout role="official">
-        <div className="text-muted-foreground">Loading...</div>
-      </DashboardLayout>
-    )
-  }
-
-  if (!currentUser) {
-    return (
-      <DashboardLayout role="official">
-        <div className="text-muted-foreground">No official user found.</div>
-      </DashboardLayout>
-    )
-  }
-
   useEffect(() => {
     const loadHistory = async () => {
       try {
@@ -81,12 +65,12 @@ export default function OfficialHistoryPage() {
   }, [])
 
   const myAchievementVerifications = useMemo(
-    () => verifiedAchievements.concat(rejectedAchievements).filter(a => a.verified_by === currentUser.id),
+    () => verifiedAchievements.concat(rejectedAchievements).filter(a => a.verified_by === currentUser?.id),
     [verifiedAchievements, rejectedAchievements, currentUser]
   )
 
   const myCertificationVerifications = useMemo(
-    () => verifiedCertifications.concat(rejectedCertifications).filter(c => c.verified_by === currentUser.id),
+    () => verifiedCertifications.concat(rejectedCertifications).filter(c => c.verified_by === currentUser?.id),
     [verifiedCertifications, rejectedCertifications, currentUser]
   )
 
@@ -115,6 +99,22 @@ export default function OfficialHistoryPage() {
     }
     loadUsers()
   }, [allUserIds, userCache])
+
+  if (isLoadingUser) {
+    return (
+      <DashboardLayout role="official">
+        <div className="text-muted-foreground">Loading...</div>
+      </DashboardLayout>
+    )
+  }
+
+  if (!currentUser) {
+    return (
+      <DashboardLayout role="official">
+        <div className="text-muted-foreground">No official user found.</div>
+      </DashboardLayout>
+    )
+  }
 
   const getUserById = (id?: string) => (id ? userCache[id] : undefined)
 
